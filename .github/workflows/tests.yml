@@ -1,7 +1,7 @@
 name: Tests
 
-# Runs the API and UI tests on every commit pushed to any branch, on every
-# pull request, and on demand from the Actions tab ("Run workflow").
+# Runs on every commit pushed to any branch, on every pull request,
+# and on demand from the Actions tab ("Run workflow").
 on:
   push:
   pull_request:
@@ -16,10 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: API and UI tests
+  # The API tests use no browser, so they run once.
+  api:
+    name: API tests
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Check out the code
@@ -32,23 +33,70 @@ jobs:
           java-version: '17'
           cache: maven
 
-      - name: Install the Playwright browser
-        run: mvn -B exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install --with-deps chromium"
+      - name: Run the API tests
+        # One retry absorbs a one-off failure of the public demo site. It is reported as flaky.
+        run: mvn -B test -Dgroups=api -Dtest.retries=1
+        env:
+          # No browser is needed here, so skip Playwright's automatic browser download.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
 
-      # GitHub sets CI=true, so the HTML report is written but no browser is opened.
-      - name: Run the API and UI tests
-        run: mvn -B test
-
-      # Runs even when tests fail, so the evidence is always available.
-      - name: Upload the test report and failure evidence
+      - name: Upload the API test report
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: test-report
+          name: test-report-api
+          path: |
+            target/test-report/
+            target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # The UI tests run once per browser engine. One browser failing does not stop the others.
+  ui:
+    name: UI tests (${{ matrix.browser }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    env:
+      BROWSER: ${{ matrix.browser }}
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v6
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      # ffmpeg is what Playwright uses to record the videos kept for failed tests.
+      - name: Install ${{ matrix.browser }}
+        run: mvn -B exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="install --with-deps ${{ matrix.browser }} ffmpeg"
+
+      # GitHub sets CI=true, so the HTML report is written but no browser is opened.
+      - name: Run the UI tests on ${{ matrix.browser }}
+        # One retry absorbs a one-off failure of the public demo site. It is reported as flaky.
+        run: mvn -B test -Dgroups=ui -Dtest.retries=1
+        env:
+          # The browser was installed in the step above, so skip the automatic download of the others.
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+      # Runs even when tests fail, so the evidence is always available.
+      - name: Upload the UI test report and failure evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: test-report-ui-${{ matrix.browser }}
           path: |
             target/test-report/
             target/failures/
             target/traces/
+            target/videos/
             target/surefire-reports/
           if-no-files-found: warn
           retention-days: 14

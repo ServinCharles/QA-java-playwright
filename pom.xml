@@ -20,6 +20,9 @@
     <junit.platform.version>1.10.2</junit.platform.version>
     <json.schema.validator.version>1.4.0</json.schema.validator.version>
     <slf4j.version>2.0.13</slf4j.version>
+    <!-- How many times a failed test is rerun. 0 locally, so real failures show at once.
+         CI passes -Dtest.retries=1 to absorb one-off failures of the public demo sites. -->
+    <test.retries>0</test.retries>
   </properties>
 
   <!-- Keeps every Jackson module on one version, including those pulled in transitively. -->
@@ -86,6 +89,12 @@
             <include>**/*Test.java</include>
           </includes>
           <trimStackTrace>false</trimStackTrace>
+          <!-- Reruns only the failed tests. A test that then passes is reported as flaky. -->
+          <rerunFailingTestsCount>${test.retries}</rerunFailingTestsCount>
+          <systemPropertyVariables>
+            <!-- Lets HtmlReportListener know whether a rerun will follow a failed run. -->
+            <test.retries>${test.retries}</test.retries>
+          </systemPropertyVariables>
           <redirectTestOutputToFile>false</redirectTestOutputToFile>
         </configuration>
       </plugin>
