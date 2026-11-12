@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * API tests for the Swagger Petstore /pet endpoint.
  * Each test checks three things: the status code, the response contract (JSON Schema),
- * and the values or error message in the body.
+ * and the values or error message in the body. That covers create, read and delete.
  * Data lives in testdata/petstore/pets.json. Schemas live in src/test/resources/schemas.
  */
 @Tag("api")
@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PetApiTest {
 
     private static final String PET_SCHEMA = "schemas/pet.schema.json";
-    private static final String ERROR_SCHEMA = "schemas/api-error.schema.json";
+    private static final String API_RESPONSE_SCHEMA = "schemas/api-response.schema.json";
 
     private static Playwright playwright;
     private static APIRequestContext requestContext;
@@ -97,7 +97,7 @@ class PetApiTest {
         assertJsonContentType(response);
 
         JsonNode error = PetStoreClient.parse(response);
-        SchemaValidator.assertMatches(ERROR_SCHEMA, error);
+        SchemaValidator.assertMatches(API_RESPONSE_SCHEMA, error);
         assertAll("not-found error body",
                 () -> assertEquals(data.notFoundType(), error.get("type").asText()),
                 () -> assertEquals(data.notFoundMessage(), error.get("message").asText()));
@@ -112,7 +112,40 @@ class PetApiTest {
         assertJsonContentType(response);
 
         // The message text here is an internal exception string, so only its contract is asserted.
-        SchemaValidator.assertMatches(ERROR_SCHEMA, PetStoreClient.parse(response));
+        SchemaValidator.assertMatches(API_RESPONSE_SCHEMA, PetStoreClient.parse(response));
+    }
+
+    @Test
+    @DisplayName("DELETE a pet returns 200 with a confirmation, and the pet can no longer be read (positive)")
+    void deletedPetIsNoLongerFound() throws IOException {
+        long id = PetStoreClient.randomPetId();
+        APIResponse created = pets.createPet(
+                PetStoreClient.newPet(id, data.petName() + "-" + id, data.petStatus()));
+        assertEquals(200, created.status(), () -> "create failed: " + created.text());
+
+        APIResponse deleted = deletePetWhenAvailable(id);
+        assertEquals(200, deleted.status(), () -> "delete failed: " + deleted.text());
+        assertJsonContentType(deleted);
+
+        JsonNode confirmation = PetStoreClient.parse(deleted);
+        SchemaValidator.assertMatches(API_RESPONSE_SCHEMA, confirmation);
+        assertAll("delete confirmation body",
+                () -> assertEquals(200, confirmation.get("code").asInt()),
+                () -> assertEquals(String.valueOf(id), confirmation.get("message").asText()));
+
+        APIResponse afterDelete = getPetUntilGone(id);
+        assertEquals(404, afterDelete.status(), "the deleted pet should no longer be found");
+        assertEquals(data.notFoundMessage(), PetStoreClient.parse(afterDelete).get("message").asText());
+    }
+
+    @Test
+    @DisplayName("DELETE an unknown pet id returns 404 (negative)")
+    void deletingUnknownPetReturnsNotFound() {
+        // The server is shared, so make sure nobody has created this id.
+        pets.deletePet(data.unknownPetId());
+
+        APIResponse response = pets.deletePet(data.unknownPetId());
+        assertEquals(404, response.status());
     }
 
     // ---- helpers ------------------------------------------------------------------
@@ -130,14 +163,37 @@ class PetApiTest {
     private static APIResponse getPetWhenAvailable(long id) {
         APIResponse response = pets.getPet(id);
         for (int attempt = 1; attempt < 6 && response.status() == 404; attempt++) {
-            try {
-                Thread.sleep(500);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
+            pause();
             response = pets.getPet(id);
         }
         return response;
+    }
+
+    /** Same reason as above: a delete straight after a create can briefly return 404. */
+    private static APIResponse deletePetWhenAvailable(long id) {
+        APIResponse response = pets.deletePet(id);
+        for (int attempt = 1; attempt < 6 && response.status() == 404; attempt++) {
+            pause();
+            response = pets.deletePet(id);
+        }
+        return response;
+    }
+
+    /** And the reverse: a read straight after a delete can briefly still return the pet. */
+    private static APIResponse getPetUntilGone(long id) {
+        APIResponse response = pets.getPet(id);
+        for (int attempt = 1; attempt < 6 && response.status() == 200; attempt++) {
+            pause();
+            response = pets.getPet(id);
+        }
+        return response;
+    }
+
+    private static void pause() {
+        try {
+            Thread.sleep(500);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
