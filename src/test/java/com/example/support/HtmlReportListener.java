@@ -18,7 +18,6 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -27,11 +26,19 @@ import java.util.Optional;
 import java.util.TreeSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Writes a self-contained HTML report to target/test-report/index.html when the test run
  * ends, then opens it in the default browser. It runs inside the test JVM, so the report
  * appears whether the run passed or failed.
+ *
+ * Retries: when Surefire reruns failed tests (test.retries), each rerun arrives as another
+ * test plan in the same JVM. Results are keyed by test id, so a test that fails and then
+ * passes is shown once as FLAKY, and one that keeps failing is shown once as FAILED.
+ *
+ * Parallel runs: results can arrive from several threads, so all shared state is thread-safe.
  *
  * Registered through META-INF/services/org.junit.platform.launcher.TestExecutionListener.
  * The browser is not opened when the CI environment variable is set or OPEN_REPORT=false.
@@ -39,43 +46,47 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class HtmlReportListener implements TestExecutionListener {
 
     private static final Path REPORT = Paths.get("target", "test-report", "index.html");
-    private static final Path FAILURES_DIR = Paths.get("target", "failures");
+    private static final Path TARGET = Paths.get("target");
+
+    // Static, so the results survive even if the launcher creates a new listener for a rerun.
+    private static final Map<String, Row> ROWS = new LinkedHashMap<>();
+    private static final Map<String, Long> START_TIMES = new ConcurrentHashMap<>();
+    private static final AtomicLong RUN_START = new AtomicLong(0);
+    private static final AtomicInteger PLANS_FINISHED = new AtomicInteger(0);
     private static final AtomicBoolean OPENED = new AtomicBoolean(false);
 
-    private final Map<String, Long> startTimes = new ConcurrentHashMap<>();
-    private final List<Row> rows = Collections.synchronizedList(new ArrayList<>());
     private volatile TestPlan testPlan;
-    private volatile long planStart = System.currentTimeMillis();
 
-    private record Row(String suite, String name, String tags, String status,
-                       long millis, String detail, String methodName) {
+    private record Row(String suite, String name, String tags, String status, long millis,
+                       String detail, String artifactName, int attempts) {
     }
 
     @Override
     public void testPlanExecutionStarted(TestPlan plan) {
         this.testPlan = plan;
-        this.planStart = System.currentTimeMillis();
+        RUN_START.compareAndSet(0, System.currentTimeMillis());
     }
 
     @Override
     public void executionStarted(TestIdentifier id) {
-        startTimes.put(id.getUniqueId(), System.currentTimeMillis());
+        START_TIMES.put(id.getUniqueId(), System.currentTimeMillis());
     }
 
     @Override
     public void executionSkipped(TestIdentifier id, String reason) {
-        rows.add(row(id, "SKIPPED", 0, reason));
+        record(id, "SKIPPED", 0, reason);
     }
 
     @Override
     public void executionFinished(TestIdentifier id, TestExecutionResult result) {
         boolean successful = result.getStatus() == TestExecutionResult.Status.SUCCESSFUL;
-        // Containers (classes, parameterized methods) only matter when their setup or teardown fails.
-        if (!id.isTest() && successful) {
+        // Containers (classes, parameterized methods) only matter when their setup or teardown
+        // fails, or when they pass on a retry after failing.
+        if (!id.isTest() && successful && !hasRow(id)) {
             return;
         }
         long now = System.currentTimeMillis();
-        long millis = now - startTimes.getOrDefault(id.getUniqueId(), now);
+        long millis = now - START_TIMES.getOrDefault(id.getUniqueId(), now);
         String status;
         switch (result.getStatus()) {
             case SUCCESSFUL:
@@ -88,19 +99,29 @@ public class HtmlReportListener implements TestExecutionListener {
                 status = "FAILED";
         }
         String detail = result.getThrowable().map(HtmlReportListener::stackTrace).orElse("");
-        rows.add(row(id, status, millis, detail));
+        record(id, status, millis, detail);
     }
 
     @Override
     public void testPlanExecutionFinished(TestPlan plan) {
-        if (rows.isEmpty()) {
+        int plansFinished = PLANS_FINISHED.incrementAndGet();
+        List<Row> snapshot = snapshot();
+        if (snapshot.isEmpty()) {
             return;
         }
         try {
             Files.createDirectories(REPORT.getParent());
-            Files.writeString(REPORT, buildHtml(System.currentTimeMillis() - planStart), StandardCharsets.UTF_8);
+            long totalMillis = System.currentTimeMillis() - RUN_START.get();
+            Files.writeString(REPORT, buildHtml(snapshot, totalMillis), StandardCharsets.UTF_8);
             System.out.println("[report] HTML report: " + REPORT.toAbsolutePath());
-            openInBrowser();
+
+            // With retries on, a run with failures is followed by a rerun. Wait for the last one
+            // before opening the browser, so it never shows a half-finished result.
+            boolean failures = snapshot.stream().anyMatch(row -> row.status().equals("FAILED"));
+            boolean rerunExpected = failures && plansFinished <= configuredRetries();
+            if (!rerunExpected) {
+                openInBrowser();
+            }
         } catch (IOException | RuntimeException e) {
             System.err.println("[report] Could not write the HTML report: " + e);
         }
@@ -108,13 +129,45 @@ public class HtmlReportListener implements TestExecutionListener {
 
     // ---- collecting -------------------------------------------------------------
 
-    private Row row(TestIdentifier id, String status, long millis, String detail) {
-        String method = id.getSource()
+    private static boolean hasRow(TestIdentifier id) {
+        synchronized (ROWS) {
+            return ROWS.containsKey(id.getUniqueId());
+        }
+    }
+
+    private static List<Row> snapshot() {
+        synchronized (ROWS) {
+            return new ArrayList<>(ROWS.values());
+        }
+    }
+
+    /** Stores a result. A second result for the same test id is a retry of that test. */
+    private void record(TestIdentifier id, String status, long millis, String detail) {
+        String safeDetail = detail == null ? "" : detail;
+        synchronized (ROWS) {
+            Row previous = ROWS.get(id.getUniqueId());
+            int attempts = previous == null ? 1 : previous.attempts() + 1;
+            String finalStatus = status;
+            String finalDetail = safeDetail;
+            boolean failedBefore = previous != null
+                    && (previous.status().equals("FAILED") || previous.status().equals("FLAKY"));
+            if (failedBefore && status.equals("PASSED")) {
+                finalStatus = "FLAKY";
+                finalDetail = previous.detail(); // keep the reason it failed the first time
+            }
+            ROWS.put(id.getUniqueId(), new Row(suiteName(id), id.getDisplayName(), tags(id),
+                    finalStatus, millis, finalDetail, artifactName(id), attempts));
+        }
+    }
+
+    /** Same name UiArtifactsExtension uses for the screenshot, trace and video of this test. */
+    private static String artifactName(TestIdentifier id) {
+        return id.getSource()
                 .filter(MethodSource.class::isInstance)
-                .map(source -> ((MethodSource) source).getMethodName())
+                .map(MethodSource.class::cast)
+                .map(source -> ArtifactNames.forTest(
+                        source.getClassName(), source.getMethodName(), id.getUniqueId()))
                 .orElse("");
-        return new Row(suiteName(id), id.getDisplayName(), tags(id), status, millis,
-                detail == null ? "" : detail, method);
     }
 
     /** Display name of the nearest enclosing test class. */
@@ -161,6 +214,19 @@ public class HtmlReportListener implements TestExecutionListener {
         return writer.toString();
     }
 
+    /** How many times Surefire will rerun failed tests (set by -Dtest.retries in the pom). */
+    private static int configuredRetries() {
+        int retries = 0;
+        for (String key : List.of("test.retries", "surefire.rerunFailingTestsCount")) {
+            try {
+                retries = Math.max(retries, Integer.parseInt(System.getProperty(key, "0").trim()));
+            } catch (NumberFormatException ignored) {
+                // not a number: treat as no retries
+            }
+        }
+        return retries;
+    }
+
     // ---- opening ----------------------------------------------------------------
 
     private void openInBrowser() {
@@ -192,17 +258,14 @@ public class HtmlReportListener implements TestExecutionListener {
 
     // ---- rendering --------------------------------------------------------------
 
-    private String buildHtml(long totalMillis) {
-        List<Row> snapshot;
-        synchronized (rows) {
-            snapshot = new ArrayList<>(rows);
-        }
-        long passed = snapshot.stream().filter(r -> r.status().equals("PASSED")).count();
-        long failed = snapshot.stream().filter(r -> r.status().equals("FAILED")).count();
-        long skipped = snapshot.stream().filter(r -> r.status().equals("SKIPPED")).count();
+    private String buildHtml(List<Row> rows, long totalMillis) {
+        long passed = count(rows, "PASSED");
+        long flaky = count(rows, "FLAKY");
+        long failed = count(rows, "FAILED");
+        long skipped = count(rows, "SKIPPED");
 
         Map<String, List<Row>> bySuite = new LinkedHashMap<>();
-        for (Row row : snapshot) {
+        for (Row row : rows) {
             bySuite.computeIfAbsent(row.suite(), key -> new ArrayList<>()).add(row);
         }
 
@@ -218,11 +281,13 @@ public class HtmlReportListener implements TestExecutionListener {
         html.append("<header>\n<h1>Test Report <span class=\"pill ").append(overall.toLowerCase(Locale.ROOT))
                 .append("\">").append(overall).append("</span></h1>\n")
                 .append("<p class=\"meta\">Run finished ").append(escape(when))
-                .append(" &middot; total time ").append(duration(totalMillis)).append("</p>\n</header>\n");
+                .append(" &middot; total time ").append(duration(totalMillis))
+                .append(browserNote(rows)).append("</p>\n</header>\n");
 
         html.append("<section class=\"summary\">\n")
-                .append(tile("Total", snapshot.size(), "total"))
+                .append(tile("Total", rows.size(), "total"))
                 .append(tile("Passed", passed, "passed"))
+                .append(tile("Flaky", flaky, "flaky"))
                 .append(tile("Failed", failed, "failed"))
                 .append(tile("Skipped", skipped, "skipped"))
                 .append("</section>\n");
@@ -233,12 +298,13 @@ public class HtmlReportListener implements TestExecutionListener {
                     .append("<th class=\"num\">Time</th></tr></thead>\n<tbody>\n");
             for (Row row : suite.getValue()) {
                 String css = row.status().toLowerCase(Locale.ROOT);
-                html.append("<tr>\n<td>").append(escape(row.name()));
+                html.append("<tr>\n<td>").append(escape(row.name())).append(retryNote(row));
                 if (!row.detail().isBlank()) {
+                    String summary = row.status().equals("FLAKY") ? "First failure" : "Details";
                     html.append("<details").append(row.status().equals("FAILED") ? " open" : "")
-                            .append("><summary>Details</summary><pre>")
-                            .append(escape(row.detail())).append("</pre>");
-                    html.append(evidenceLinks(row)).append("</details>");
+                            .append("><summary>").append(summary).append("</summary><pre>")
+                            .append(escape(row.detail())).append("</pre>")
+                            .append(evidenceLinks(row)).append("</details>");
                 }
                 html.append("</td>\n<td>").append(escape(row.tags().toUpperCase(Locale.ROOT))).append("</td>\n")
                         .append("<td><span class=\"pill ").append(css).append("\">")
@@ -252,18 +318,49 @@ public class HtmlReportListener implements TestExecutionListener {
         return html.toString();
     }
 
-    /** Links to the screenshot and trace that UiArtifactsExtension saves for a failed UI test. */
-    private String evidenceLinks(Row row) {
-        if (!row.status().equals("FAILED") || row.methodName().isBlank()) {
+    private static long count(List<Row> rows, String status) {
+        return rows.stream().filter(row -> row.status().equals(status)).count();
+    }
+
+    /** One line under the test name saying what the retries did. */
+    private static String retryNote(Row row) {
+        if (row.status().equals("FLAKY")) {
+            return "<p class=\"note\">Failed, then passed on attempt " + row.attempts() + "</p>";
+        }
+        if (row.status().equals("FAILED") && row.attempts() > 1) {
+            return "<p class=\"note\">Failed on all " + row.attempts() + " attempts</p>";
+        }
+        return "";
+    }
+
+    /** Names the browser in the header, but only when UI tests were part of the run. */
+    private static String browserNote(List<Row> rows) {
+        boolean uiTestsRan = rows.stream()
+                .anyMatch(row -> List.of(row.tags().split(", ")).contains("ui"));
+        if (!uiTestsRan) {
             return "";
         }
+        return " &middot; browser " + escape(Config.get("BROWSER", "chromium").trim().toLowerCase(Locale.ROOT));
+    }
+
+    /** Links to the screenshot, video and trace that UiArtifactsExtension saved for a failed UI test. */
+    private static String evidenceLinks(Row row) {
+        boolean failedAtSomePoint = row.status().equals("FAILED") || row.status().equals("FLAKY");
+        if (!failedAtSomePoint || row.artifactName().isBlank()) {
+            return "";
+        }
+        String name = row.artifactName();
         StringBuilder links = new StringBuilder();
-        if (Files.exists(FAILURES_DIR.resolve(row.methodName() + ".png"))) {
-            links.append("<p><a href=\"../failures/").append(escape(row.methodName()))
+        if (Files.exists(TARGET.resolve("failures").resolve(name + ".png"))) {
+            links.append("<p><a href=\"../failures/").append(escape(name))
                     .append(".png\">Screenshot at failure</a></p>");
         }
-        if (Files.exists(Paths.get("target", "traces", row.methodName() + ".zip"))) {
-            links.append("<p>Playwright trace: <code>target/traces/").append(escape(row.methodName()))
+        if (Files.exists(TARGET.resolve("videos").resolve(name + ".webm"))) {
+            links.append("<p><a href=\"../videos/").append(escape(name))
+                    .append(".webm\">Video of the failed test</a></p>");
+        }
+        if (Files.exists(TARGET.resolve("traces").resolve(name + ".zip"))) {
+            links.append("<p>Playwright trace: <code>target/traces/").append(escape(name))
                     .append(".zip</code></p>");
         }
         return links.toString();
@@ -288,11 +385,11 @@ public class HtmlReportListener implements TestExecutionListener {
     private static final String CSS = """
             :root { --bg:#f6f7f9; --card:#ffffff; --text:#1c2330; --muted:#5f6b7a; --line:#e3e7ec;
                     --pass:#1a7f4b; --pass-bg:#e3f5ea; --fail:#c0262d; --fail-bg:#fde8e8;
-                    --skip:#8a6100; --skip-bg:#fdf1cf; }
+                    --flaky:#8a6100; --flaky-bg:#fdf1cf; --skip:#55606e; --skip-bg:#e6e9ee; }
             @media (prefers-color-scheme: dark) {
               :root { --bg:#12161c; --card:#1b212a; --text:#e8ecf1; --muted:#9aa6b4; --line:#2b3440;
                       --pass:#5fd38d; --pass-bg:#16382a; --fail:#ff8a8a; --fail-bg:#4a1d20;
-                      --skip:#f0c75e; --skip-bg:#40340f; }
+                      --flaky:#f0c75e; --flaky-bg:#40340f; --skip:#b3bdc9; --skip-bg:#2b3440; }
             }
             * { box-sizing: border-box; }
             body { margin:0; background:var(--bg); color:var(--text);
@@ -301,11 +398,13 @@ public class HtmlReportListener implements TestExecutionListener {
             h1 { font-size:26px; margin:0 0 4px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
             h2 { font-size:17px; margin:0 0 12px; }
             .meta { color:var(--muted); margin:0 0 24px; }
-            .summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:12px; margin-bottom:24px; }
+            .note { color:var(--muted); font-size:13px; margin:2px 0 0; }
+            .summary { display:grid; grid-template-columns:repeat(auto-fit, minmax(120px, 1fr)); gap:12px; margin-bottom:24px; }
             .tile { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
             .tile .value { display:block; font-size:30px; font-weight:700; line-height:1.1; }
             .tile .label { color:var(--muted); font-size:13px; }
             .tile.passed .value { color:var(--pass); }
+            .tile.flaky .value { color:var(--flaky); }
             .tile.failed .value { color:var(--fail); }
             .tile.skipped .value { color:var(--skip); }
             .suite { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; overflow-x:auto; }
@@ -316,6 +415,7 @@ public class HtmlReportListener implements TestExecutionListener {
             .num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
             .pill { display:inline-block; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:700; letter-spacing:.03em; }
             .pill.passed { color:var(--pass); background:var(--pass-bg); }
+            .pill.flaky { color:var(--flaky); background:var(--flaky-bg); }
             .pill.failed { color:var(--fail); background:var(--fail-bg); }
             .pill.skipped { color:var(--skip); background:var(--skip-bg); }
             details { margin-top:8px; }
