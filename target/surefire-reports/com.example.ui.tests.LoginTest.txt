@@ -1,4 +1,0 @@
--------------------------------------------------------------------------------
-Test set: com.example.ui.tests.LoginTest
--------------------------------------------------------------------------------
-Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 9.529 s -- in com.example.ui.tests.LoginTest

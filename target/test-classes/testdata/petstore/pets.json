@@ -1,8 +1,0 @@
-{
-  "petName": "qa-automation-pet",
-  "petStatus": "available",
-  "unknownPetId": 999999999,
-  "invalidPetId": "abc",
-  "notFoundType": "error",
-  "notFoundMessage": "Pet not found"
-}
