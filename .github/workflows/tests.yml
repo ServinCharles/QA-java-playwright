@@ -16,10 +16,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The runner is pinned to Ubuntu 24.04 on purpose. The pinned Playwright version (see pom.xml)
+  # cannot install WebKit's system packages on newer Ubuntu releases, which "ubuntu-latest" now is.
+  # Move this forward together with the Playwright version.
+
   # The API tests use no browser, so they run once.
   api:
     name: API tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:
@@ -54,7 +58,7 @@ jobs:
   # The UI tests run once per browser engine. One browser failing does not stop the others.
   ui:
     name: UI tests (${{ matrix.browser }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
