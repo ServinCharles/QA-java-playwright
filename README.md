@@ -1,5 +1,7 @@
 # QA Technical Test: Playwright Test Automation Framework (Java)
 
+[![Tests](https://github.com/ServinCharles/QA-java-playwright/actions/workflows/tests.yml/badge.svg)](https://github.com/ServinCharles/QA-java-playwright/actions/workflows/tests.yml)
+
 API tests against the Swagger Petstore and UI tests against OrangeHRM, built on Playwright for Java and JUnit 5.
 
 ## Prerequisites
@@ -29,6 +31,14 @@ Headed browser for debugging:
 ```bash
 HEADLESS=false mvn test -Dgroups=ui
 ```
+
+## Continuous integration
+
+GitHub Actions runs the full suite (`mvn test`) on every commit pushed to any branch, on every pull request, and on demand from the Actions tab. The workflow is in `.github/workflows/tests.yml`.
+
+Each run uploads a `test-report` artifact containing the HTML report, the Surefire results, and any failure screenshots and traces. Download it from the run's summary page and open `test-report/index.html`.
+
+Both systems under test are public demo sites, so a run can fail when one of them is down. Check the report before treating a red build as a code problem.
 
 ## Configuration
 

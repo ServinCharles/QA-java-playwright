@@ -115,4 +115,5 @@ The result is the test pyramid: many unit tests, fewer API tests, and a small se
 - **Hand-written schemas.** The contract schemas are written by hand from the published Swagger definition. In a real project I would generate them from the OpenAPI document, or use consumer-driven contract tests (Pact), so the schema cannot drift from the specification.
 - **Reporting.** A small JUnit listener builds a self-contained HTML report and opens it after the run. For a team, I would use Allure for history and trends.
 - **Scope.** The brief asked for one API test and one UI test in about an hour, so breadth is described in section 3 and not implemented.
-- **Not yet covered:** parallel execution, cross-browser runs, a CI pipeline, and retries for flaky infrastructure. All are supported by the structure and would be the next steps.
+- **Continuous integration.** A GitHub Actions workflow runs the whole suite on every commit and pull request, and uploads the report, screenshots and traces as an artifact. Because both targets are public demos, a red build can mean the demo is down, so the report is the first thing to check.
+- **Not yet covered:** parallel execution, cross-browser runs, and retries for flaky infrastructure. All are supported by the structure and would be the next steps.
