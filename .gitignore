@@ -1,0 +1,24 @@
+# Build output: compiled classes, test reports, screenshots, traces, videos
+target/
+
+# IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Local environment files and secrets
+.env
+.env.*
+!.env.example

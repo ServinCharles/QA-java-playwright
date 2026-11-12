@@ -1,0 +1,12 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ApiResponse (error)",
+  "description": "Contract for the error body the Swagger Petstore returns on 4xx responses.",
+  "type": "object",
+  "required": ["code", "type", "message"],
+  "properties": {
+    "code": { "type": "integer" },
+    "type": { "type": "string", "minLength": 1 },
+    "message": { "type": "string", "minLength": 1 }
+  }
+}

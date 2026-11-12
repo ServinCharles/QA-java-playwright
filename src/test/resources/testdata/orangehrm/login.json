@@ -1,0 +1,39 @@
+[
+  {
+    "name": "valid credentials reach the dashboard",
+    "useConfigCredentials": true,
+    "expectSuccess": true
+  },
+  {
+    "name": "wrong password shows Invalid credentials",
+    "username": "Admin",
+    "password": "not-the-password",
+    "useConfigCredentials": false,
+    "expectSuccess": false,
+    "expectedError": "Invalid credentials"
+  },
+  {
+    "name": "unknown user shows Invalid credentials",
+    "username": "no-such-user-qa",
+    "password": "whatever-123",
+    "useConfigCredentials": false,
+    "expectSuccess": false,
+    "expectedError": "Invalid credentials"
+  },
+  {
+    "name": "empty username and password show Required under both fields",
+    "username": "",
+    "password": "",
+    "useConfigCredentials": false,
+    "expectSuccess": false,
+    "expectedFieldErrors": ["Required", "Required"]
+  },
+  {
+    "name": "empty password shows Required under the password field",
+    "username": "Admin",
+    "password": "",
+    "useConfigCredentials": false,
+    "expectSuccess": false,
+    "expectedFieldErrors": ["Required"]
+  }
+]

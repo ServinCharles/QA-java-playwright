@@ -1,0 +1,16 @@
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/api/PetApiTest.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/api/PetStoreClient.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/data/LoginCase.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/data/PetstoreData.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/support/Config.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/support/HtmlReportListener.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/support/SchemaValidator.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/support/TestDataLoader.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/base/BasePage.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/base/BaseUiTest.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/base/UiArtifactsExtension.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/locators/DashboardLocators.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/locators/LoginLocators.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/pages/DashboardPage.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/pages/LoginPage.java
+/Users/servincharles/Documents/QA-java-playwright/QA-java-playwright/src/test/java/com/example/ui/tests/LoginTest.java
