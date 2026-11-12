@@ -19,11 +19,13 @@ This document explains what was automated, why those scenarios were chosen, what
 | 1 | `POST /pet`, then `GET /pet/{id}` returns the same id, name and status, and both responses match the Pet contract | Positive | Proves the core behaviour: what is written can be read back. It is the path every other pet feature depends on. |
 | 2 | `GET /pet/{id}` for an id that does not exist returns 404 with type `error` and message `Pet not found` | Negative | Consumers need a clear "not found". A 200 with an empty body or a 500 would break clients. |
 | 3 | `GET /pet/abc` (non-numeric id) returns a 4xx with a well-formed error body | Negative | Invalid input must be rejected as a client error, not surface as a server error. |
+| 4 | `DELETE /pet/{id}` returns 200 with a confirmation body naming the id, and a `GET` afterwards returns 404 `Pet not found` | Positive | Completes the lifecycle. A 200 alone does not prove the pet is gone, so the test reads it back. |
+| 5 | `DELETE /pet/{id}` for an id that does not exist returns 404 | Negative | Deleting something that is not there must not report success. |
 
 Each API test asserts three layers:
 
 1. **Status code.** The outcome the client branches on.
-2. **Contract.** The body is validated against a JSON Schema (draft-07) in `src/test/resources/schemas`, using the networknt validator. `pet.schema.json` checks required fields, types, and the `status` enum. `api-error.schema.json` checks that every error has an integer `code` and a non-empty `type` and `message`. The `Content-Type` header must be JSON.
+2. **Contract.** The body is validated against a JSON Schema (draft-07) in `src/test/resources/schemas`, using the networknt validator. `pet.schema.json` checks required fields, types, and the `status` enum. `api-response.schema.json` checks that every error, and the delete confirmation, has an integer `code` and a non-empty `type` and `message`. The `Content-Type` header must be JSON.
 3. **Values.** The fields or error message a consumer relies on, grouped with `assertAll` so one run reports every mismatch.
 
 Notes on the assertions:
@@ -31,8 +33,9 @@ Notes on the assertions:
 - The schemas allow extra fields. A new optional field is not a breaking change, so it should not fail the suite. A removed field, a changed type, or a new enum value does fail it.
 - Scenario 2 asserts the exact message `Pet not found`, because that is a deliberate, client-facing message.
 - Scenario 3 asserts the 4xx range and the error contract, not the message text. The server returns `java.lang.NumberFormatException: For input string: "abc"`, which is an internal exception leaking to the client. I would raise that as a defect (it should be a 400 with a clean message), and pinning the test to that text would only cement the bug.
-- Pet ids are random per run and the pet is deleted afterwards, because the public Petstore is shared with other users. The unknown-id test deletes its id first for the same reason.
-- The public server runs on several instances, so a read straight after a write can briefly return 404. The round-trip test polls for up to about 2.5 seconds before failing.
+- Scenario 5 asserts the status only. The server returns 404 with an empty body there, while a `GET` for the same missing id returns a JSON error. I would raise that inconsistency as a defect, since clients cannot parse the two "not found" responses the same way.
+- Pet ids are random per run and the pet is deleted afterwards, because the public Petstore is shared with other users. The unknown-id tests delete their id first for the same reason.
+- The public server runs on several instances, so a read or delete straight after a write can briefly see stale data. The tests poll for up to about 2.5 seconds before failing.
 
 ### 2.2 UI: OrangeHRM, login
 
@@ -63,15 +66,14 @@ Priority is based on business risk first, then how likely the area is to break.
 | Priority | Scenario | Type | Approach and rationale |
 | --- | --- | --- | --- |
 | 1 | `PUT /pet` updates name and status, then `GET` shows the change | Positive | Completes the write path. Updates are a common source of partial-save bugs. |
-| 2 | `DELETE /pet/{id}`, then `GET` returns 404 | Positive | Completes the lifecycle and also gives the suite a cleanup step. |
-| 3 | `POST /pet` with a missing required field (`name` or `photoUrls`) is rejected | Negative | Schema validation protects data quality. Assert a 4xx. |
-| 4 | `POST /pet` with the wrong type (string for `id`) or malformed JSON is rejected | Negative | Malformed input must not cause a 500. |
-| 5 | `GET /pet/findByStatus` returns only pets with the requested status | Positive | Filtering logic is easy to get wrong. Assert every item in the list. |
-| 6 | `findByStatus` with an invalid status value | Negative | Either a 400 or an empty list. The test pins whichever the contract states. |
-| 7 | Contract checks on the remaining endpoints (`findByStatus` list, `/store/order`, `/user`) | Positive | The implemented tests already validate `/pet` against a schema. Extending that catches contract drift everywhere else. |
-| 8 | `DELETE` or `PUT` on an id that does not exist returns 404 | Negative | Error handling on the write path. |
-| 9 | Boundary ids: 0, negative, larger than a 64-bit integer | Negative | Classic boundary values for a numeric path parameter. |
-| 10 | Unsupported method or content type returns 405 or 415 | Negative | Lower risk, cheap to add once the client exists. |
+| 2 | `POST /pet` with a missing required field (`name` or `photoUrls`) is rejected | Negative | Schema validation protects data quality. Assert a 4xx. |
+| 3 | `POST /pet` with the wrong type (string for `id`) or malformed JSON is rejected | Negative | Malformed input must not cause a 500. |
+| 4 | `GET /pet/findByStatus` returns only pets with the requested status | Positive | Filtering logic is easy to get wrong. Assert every item in the list. |
+| 5 | `findByStatus` with an invalid status value | Negative | Either a 400 or an empty list. The test pins whichever the contract states. |
+| 6 | Contract checks on the remaining endpoints (`findByStatus` list, `/store/order`, `/user`) | Positive | The implemented tests already validate `/pet` against a schema. Extending that catches contract drift everywhere else. |
+| 7 | `PUT` on an id that does not exist returns 404 | Negative | Error handling on the write path. |
+| 8 | Boundary ids: 0, negative, larger than a 64-bit integer | Negative | Classic boundary values for a numeric path parameter. |
+| 9 | Unsupported method or content type returns 405 or 415 | Negative | Lower risk, cheap to add once the client exists. |
 
 ### 3.2 OrangeHRM UI
 

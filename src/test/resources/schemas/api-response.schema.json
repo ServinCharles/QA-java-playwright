@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "ApiResponse (error)",
-  "description": "Contract for the error body the Swagger Petstore returns on 4xx responses.",
+  "title": "ApiResponse",
+  "description": "Contract for the Swagger Petstore's ApiResponse body. The API returns it for errors (4xx) and as the confirmation of a successful delete.",
   "type": "object",
   "required": ["code", "type", "message"],
   "properties": {
