@@ -46,8 +46,11 @@ public abstract class BasePage {
         locator(selector).waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE));
     }
 
+    /** Waits for the URL to match, with the same lighter load condition and longer timeout as navigate(). */
     protected void waitForUrl(Pattern urlPattern) {
-        page.waitForURL(urlPattern);
+        page.waitForURL(urlPattern, new Page.WaitForURLOptions()
+                .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
+                .setTimeout(NAVIGATION_TIMEOUT_MS));
     }
 
     // ---- element lookup -------------------------------------------------------

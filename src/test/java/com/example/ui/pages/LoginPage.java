@@ -24,8 +24,12 @@ public class LoginPage extends BasePage {
         return this;
     }
 
+    /**
+     * Clicks Login without waiting for the page it leads to to finish loading. The next page
+     * is checked by the test itself (waitForUrl), so a slow resource cannot time out the click.
+     */
     public void submit() {
-        click(LoginLocators.SUBMIT);
+        locator(LoginLocators.SUBMIT).click(new Locator.ClickOptions().setNoWaitAfter(true));
     }
 
     /** The banner shown when the server rejects the credentials. */
