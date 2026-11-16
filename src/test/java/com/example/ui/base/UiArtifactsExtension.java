@@ -72,9 +72,12 @@ public class UiArtifactsExtension implements AfterEachCallback {
         }
         try {
             Path failures = Files.createDirectories(TARGET.resolve("failures"));
+            // Short timeout: if the page is stuck, give up on the screenshot quickly rather than
+            // blocking the run, so the original test failure is the one that gets reported.
             page.screenshot(new Page.ScreenshotOptions()
                     .setPath(failures.resolve(name + ".png"))
-                    .setFullPage(true));
+                    .setFullPage(true)
+                    .setTimeout(5_000));
         } catch (IOException | RuntimeException e) {
             log("Could not save the screenshot for " + name, e);
         }
