@@ -24,6 +24,7 @@ mvn exec:java -e -Dexec.mainClass=com.microsoft.playwright.CLI -Dexec.args="inst
 mvn test                  # API and UI tests, then the report opens in your browser
 mvn test -Dgroups=api     # API tests only
 mvn test -Dgroups=ui      # UI tests only
+mvn test -Dgroups=accessibility  # axe-core accessibility checks only
 ```
 
 Cross-browser. The UI tests run on Chromium by default. Set `BROWSER` to pick another engine:
