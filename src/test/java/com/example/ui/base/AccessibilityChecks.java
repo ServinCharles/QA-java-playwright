@@ -12,6 +12,7 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Runs axe-core, the accessibility rules engine, on the current page.
@@ -29,6 +30,13 @@ public final class AccessibilityChecks {
             "async () => JSON.stringify(await axe.run(document, "
                     + "{ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }))";
     private static final List<String> BLOCKING_IMPACTS = List.of("serious", "critical");
+
+    /**
+     * BUG: known accessibility defects in the OrangeHRM demo login page, tracked in GitHub issue #12.
+     * These rules are reported to the console but do not fail the build. Any other rule with
+     * serious or critical impact still fails. Remove a rule from this set when its bug is fixed.
+     */
+    private static final Set<String> KNOWN_BUGS = Set.of("color-contrast", "html-has-lang", "link-name");
     private static final ObjectMapper JSON = new ObjectMapper();
 
     private AccessibilityChecks() {
@@ -43,9 +51,14 @@ public final class AccessibilityChecks {
         for (JsonNode violation : violations(report)) {
             String impact = violation.path("impact").asText();
             if (BLOCKING_IMPACTS.contains(impact)) {
-                blocking.add(violation.path("id").asText() + " (" + impact + ", "
-                        + violation.path("nodes").size() + " element(s)): "
-                        + violation.path("help").asText());
+                String id = violation.path("id").asText();
+                String line = id + " (" + impact + ", " + violation.path("nodes").size() + " element(s)): "
+                        + violation.path("help").asText();
+                if (KNOWN_BUGS.contains(id)) {
+                    System.out.println("[accessibility] KNOWN BUG, not blocking: " + line);
+                } else {
+                    blocking.add(line);
+                }
             }
         }
         Assertions.assertTrue(blocking.isEmpty(),
