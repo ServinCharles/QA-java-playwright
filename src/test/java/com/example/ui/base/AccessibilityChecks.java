@@ -6,6 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.microsoft.playwright.Page;
 import org.junit.jupiter.api.Assertions;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -19,7 +23,8 @@ import java.util.List;
  */
 public final class AccessibilityChecks {
 
-    private static final String AXE_URL = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.0/axe.min.js";
+    /** axe-core 4.10.0, bundled with the tests. The demo site's Content Security Policy blocks CDN scripts. */
+    private static final String AXE_RESOURCE = "axe/axe.min.js";
     private static final String RUN_AXE =
             "async () => JSON.stringify(await axe.run(document, "
                     + "{ runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }))";
@@ -31,7 +36,7 @@ public final class AccessibilityChecks {
 
     /** Fails the test, listing every blocking violation, if the current page has any. */
     public static void assertNoBlockingViolations(Page page) {
-        page.addScriptTag(new Page.AddScriptTagOptions().setUrl(AXE_URL));
+        page.addScriptTag(new Page.AddScriptTagOptions().setContent(loadAxe()));
         String report = (String) page.evaluate(RUN_AXE);
 
         List<String> blocking = new ArrayList<>();
@@ -46,6 +51,17 @@ public final class AccessibilityChecks {
         Assertions.assertTrue(blocking.isEmpty(),
                 "Serious or critical accessibility violations on " + page.url() + ":\n  - "
                         + String.join("\n  - ", blocking));
+    }
+
+    private static String loadAxe() {
+        try (InputStream in = AccessibilityChecks.class.getClassLoader().getResourceAsStream(AXE_RESOURCE)) {
+            if (in == null) {
+                throw new IllegalStateException("Missing test resource " + AXE_RESOURCE);
+            }
+            return new String(in.readAllBytes(), StandardCharsets.UTF_8);
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
     }
 
     private static JsonNode violations(String report) {
