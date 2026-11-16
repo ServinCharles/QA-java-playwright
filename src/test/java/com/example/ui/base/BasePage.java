@@ -4,6 +4,7 @@ import com.microsoft.playwright.Locator;
 import com.microsoft.playwright.Page;
 import com.microsoft.playwright.options.AriaRole;
 import com.microsoft.playwright.options.WaitForSelectorState;
+import com.microsoft.playwright.options.WaitUntilState;
 
 import java.util.regex.Pattern;
 
@@ -27,9 +28,19 @@ public abstract class BasePage {
 
     // ---- navigation and waits -------------------------------------------------
 
+    /**
+     * Opens a URL and waits only until the HTML is parsed (DOMCONTENTLOADED), not until every
+     * script and image has loaded. A slow third-party resource then cannot block the test.
+     * The page's own waits (for example, a visible field) confirm the page is ready.
+     */
     protected void navigate(String url) {
-        page.navigate(url);
+        page.navigate(url, new Page.NavigateOptions()
+                .setWaitUntil(WaitUntilState.DOMCONTENTLOADED)
+                .setTimeout(NAVIGATION_TIMEOUT_MS));
     }
+
+    /** Longer than the default 10 s, but only for navigation, so real failures stay fast. */
+    protected static final double NAVIGATION_TIMEOUT_MS = 30_000;
 
     protected void waitForVisible(String selector) {
         locator(selector).waitFor(new Locator.WaitForOptions().setState(WaitForSelectorState.VISIBLE));
