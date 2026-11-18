@@ -4,6 +4,7 @@ import com.example.data.LoginCase;
 import com.example.support.Config;
 import com.example.support.TestDataLoader;
 import com.example.ui.base.BaseUiTest;
+import com.example.ui.base.CopyText;
 import com.example.ui.pages.DashboardPage;
 import com.example.ui.pages.LoginPage;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -47,11 +48,14 @@ class LoginTest extends BaseUiTest {
                 // Server-side rejection: a visible banner with the exact message.
                 assertThat(login.errorMessage()).isVisible();
                 assertThat(login.errorMessage()).hasText(data.expectedError());
+                // Copy check: the exact wording, case and punctuation users read.
+                CopyText.assertExact(login.errorMessage(), data.expectedError());
             }
             if (data.expectedFieldErrors() != null) {
                 // Client-side validation: one message per invalid field, in order, and no banner.
                 assertThat(login.fieldErrors())
                         .hasText(data.expectedFieldErrors().toArray(new String[0]));
+                CopyText.assertExact(login.fieldErrors(), data.expectedFieldErrors());
                 assertThat(login.errorMessage()).isHidden();
             }
         }

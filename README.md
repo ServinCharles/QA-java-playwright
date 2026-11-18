@@ -105,7 +105,7 @@ The defaults are the public OrangeHRM demo credentials. Set your own values for 
 ```
 src/test/java/com/example/
   api/        PetStoreClient (HTTP client), PetApiTest (API tests)
-  ui/base/    BasePage (shared actions), BaseUiTest (browser lifecycle),
+  ui/base/    BasePage (shared actions), BaseUiTest (browser lifecycle), CopyText (copy checks),
               UiArtifactsExtension (screenshots, traces and videos on failure)
   ui/locators/ One class per page, all selectors as constants
   ui/pages/   Page objects: actions only, no raw selectors
@@ -131,7 +131,7 @@ See [docs/TEST_DESIGN.md](docs/TEST_DESIGN.md) for the scenarios chosen and why,
 - **Page Object Model.** Tests talk to page objects, and page objects talk to `BasePage`. Selectors live only in the locator classes, so a UI change means one edit.
 - **Test data is separate.** Scenarios are JSON, mapped to records. Adding a login case means adding a JSON entry, not writing Java.
 - **API contract validation.** Every API response is validated against a JSON Schema (draft-07) with the networknt validator, as well as its status code and values. A failure lists every violation.
-- **Error message validation.** The UI tests assert the exact "Invalid credentials" banner and the per-field "Required" messages. The API tests assert the "Pet not found" error body and the delete confirmation. Expected messages live in the data files.
+- **Error message validation.** The UI tests assert the exact "Invalid credentials" banner and the per-field "Required" messages. A copy text check (`CopyText`) then compares the rendered text character for character, including case, punctuation and stray spaces, so a wording change fails the test. The API tests assert the "Pet not found" error body and the delete confirmation. Expected messages live in the data files.
 - **Reusable actions.** `BasePage` holds click, fill, select, radio, checkbox, `clickButton("Continue")`, waits, and reads.
 - **Credentials stay out of the data files.** The valid-login case reads its username and password from `Config`.
 - **Failure evidence.** A failed UI test saves a full-page screenshot (`target/failures`), a video (`target/videos`) and a Playwright trace (`target/traces`). Passing tests keep nothing. Files are named after the test and its case number, for example `LoginTest.loginBehavesAsExpected-2`, and the report links to them.
