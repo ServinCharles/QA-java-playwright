@@ -10,7 +10,7 @@
     "password": "not-the-password",
     "useConfigCredentials": false,
     "expectSuccess": false,
-    "expectedError": "Invalid credentials"
+    "expectedErrorKey": "login.invalidCredentials"
   },
   {
     "name": "unknown user shows Invalid credentials",
@@ -18,7 +18,7 @@
     "password": "whatever-123",
     "useConfigCredentials": false,
     "expectSuccess": false,
-    "expectedError": "Invalid credentials"
+    "expectedErrorKey": "login.invalidCredentials"
   },
   {
     "name": "empty username and password show Required under both fields",
@@ -26,7 +26,10 @@
     "password": "",
     "useConfigCredentials": false,
     "expectSuccess": false,
-    "expectedFieldErrors": ["Required", "Required"]
+    "expectedFieldErrorKeys": [
+      "field.required",
+      "field.required"
+    ]
   },
   {
     "name": "empty password shows Required under the password field",
@@ -34,6 +37,8 @@
     "password": "",
     "useConfigCredentials": false,
     "expectSuccess": false,
-    "expectedFieldErrors": ["Required"]
+    "expectedFieldErrorKeys": [
+      "field.required"
+    ]
   }
 ]

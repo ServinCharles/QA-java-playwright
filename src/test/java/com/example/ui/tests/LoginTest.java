@@ -2,6 +2,7 @@ package com.example.ui.tests;
 
 import com.example.data.LoginCase;
 import com.example.support.Config;
+import com.example.support.CopyDeck;
 import com.example.support.TestDataLoader;
 import com.example.ui.base.BaseUiTest;
 import com.example.ui.base.CopyText;
@@ -44,18 +45,20 @@ class LoginTest extends BaseUiTest {
             // Every rejected login must leave the user on the login page.
             assertThat(page()).hasURL(Pattern.compile(".*/auth/login.*"));
 
-            if (data.expectedError() != null) {
-                // Server-side rejection: a visible banner with the exact message.
+            if (data.expectedErrorKey() != null) {
+                // Server-side rejection: a visible banner with the approved message from copy.json.
+                String expectedError = CopyDeck.text(data.expectedErrorKey());
                 assertThat(login.errorMessage()).isVisible();
-                assertThat(login.errorMessage()).hasText(data.expectedError());
+                assertThat(login.errorMessage()).hasText(expectedError);
                 // Copy check: the exact wording, case and punctuation users read.
-                CopyText.assertExact(login.errorMessage(), data.expectedError());
+                CopyText.assertExact(login.errorMessage(), expectedError);
             }
-            if (data.expectedFieldErrors() != null) {
+            if (data.expectedFieldErrorKeys() != null) {
                 // Client-side validation: one message per invalid field, in order, and no banner.
+                List<String> expectedFieldErrors = CopyDeck.texts(data.expectedFieldErrorKeys());
                 assertThat(login.fieldErrors())
-                        .hasText(data.expectedFieldErrors().toArray(new String[0]));
-                CopyText.assertExact(login.fieldErrors(), data.expectedFieldErrors());
+                        .hasText(expectedFieldErrors.toArray(new String[0]));
+                CopyText.assertExact(login.fieldErrors(), expectedFieldErrors);
                 assertThat(login.errorMessage()).isHidden();
             }
         }

@@ -15,7 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * (innerText) exactly: wording, case, punctuation and spacing. They also fail on leading or
  * trailing whitespace, so a copy change or a formatting slip is caught.
  *
- * The approved copy is the expected text in the test data files.
+ * The approved copy lives in testdata/orangehrm/copy.json and is read through CopyDeck.
  */
 public final class CopyText {
 

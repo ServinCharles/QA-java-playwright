@@ -112,11 +112,13 @@ src/test/java/com/example/
   ui/tests/   UI test classes (data-driven)
   data/       Typed records for test data
   support/    Config (env and property resolution), TestDataLoader (JSON reader),
-              SchemaValidator (API contract checks), HtmlReportListener (report),
+              SchemaValidator (API contract checks), CopyDeck (approved wording),
+              HtmlReportListener (report),
               ArtifactNames (file names for failure evidence)
 src/test/resources/
   junit-platform.properties        Parallel execution settings
-  testdata/orangehrm/login.json    Login scenarios and expected error messages
+  testdata/orangehrm/login.json    Login scenarios, with expected messages as copy keys
+  testdata/orangehrm/copy.json     Approved user-facing wording (copy deck)
   testdata/petstore/pets.json      Petstore scenario data and expected error message
   schemas/pet.schema.json          Contract for a Pet response
   schemas/api-response.schema.json Contract for an error or delete-confirmation response
@@ -131,7 +133,7 @@ See [docs/TEST_DESIGN.md](docs/TEST_DESIGN.md) for the scenarios chosen and why,
 - **Page Object Model.** Tests talk to page objects, and page objects talk to `BasePage`. Selectors live only in the locator classes, so a UI change means one edit.
 - **Test data is separate.** Scenarios are JSON, mapped to records. Adding a login case means adding a JSON entry, not writing Java.
 - **API contract validation.** Every API response is validated against a JSON Schema (draft-07) with the networknt validator, as well as its status code and values. A failure lists every violation.
-- **Error message validation.** The UI tests assert the exact "Invalid credentials" banner and the per-field "Required" messages. A copy text check (`CopyText`) then compares the rendered text character for character, including case, punctuation and stray spaces, so a wording change fails the test. The API tests assert the "Pet not found" error body and the delete confirmation. Expected messages live in the data files.
+- **Error message validation.** The UI tests assert the exact "Invalid credentials" banner and the per-field "Required" messages. A copy text check (`CopyText`) then compares the rendered text character for character, including case, punctuation and stray spaces, so a wording change fails the test. The approved wording lives in one file, `testdata/orangehrm/copy.json`, and the login cases refer to it by key. The API tests assert the "Pet not found" error body and the delete confirmation. Expected messages live in the data files.
 - **Reusable actions.** `BasePage` holds click, fill, select, radio, checkbox, `clickButton("Continue")`, waits, and reads.
 - **Credentials stay out of the data files.** The valid-login case reads its username and password from `Config`.
 - **Failure evidence.** A failed UI test saves a full-page screenshot (`target/failures`), a video (`target/videos`) and a Playwright trace (`target/traces`). Passing tests keep nothing. Files are named after the test and its case number, for example `LoginTest.loginBehavesAsExpected-2`, and the report links to them.
